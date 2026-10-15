@@ -15,6 +15,7 @@ search function as a parameter for the same reason: tests pass a fake one.
 import json
 import os
 import re
+import unicodedata
 from typing import Callable
 
 from dotenv import load_dotenv
@@ -22,6 +23,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+SYSTEM_PROMPT = """You are a helpful assistant that recommends books based on a user's ranked list of books they've read. 
+You will be given a list of books the user liked and disliked, and you should recommend new books they haven't read yet, 
+providing a reason for each recommendation that relates to the books they liked. Each recommendation should be a real, published book. 
+Each of the recommendations should be from a different author. Find books that are similar in genre, style, time period, theme, subject,
+or have similar tropes to the books the user liked. Avoid recommending books that are too similar to the ones the user disliked.
+Also, consider if this book is rated highly by other readers."""
 
 
 class RecommenderError(Exception):
@@ -65,7 +72,7 @@ def ask_llm(prompt: str) -> str:
     try:
         response = OpenAI(timeout=60).chat.completions.create(
             model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"},  # ask for valid JSON
         )
     except OpenAIError as e:
@@ -103,17 +110,62 @@ def parse_suggestions(text: str) -> list[dict]:
 
 def normalize_title(title: str) -> str:
     """'The Name of the Wind: Kingkiller #1' -> 'name of the wind'"""
-    t = title.lower().split(":")[0]
+    t = _fold(title).split(":")[0]
     t = re.sub(r"[^a-z0-9 ]", "", t)
     t = re.sub(r"^(the|a|an) ", "", t.strip())
     return re.sub(r"\s+", " ", t).strip()
 
 
+def _fold(text: str) -> str:
+    """Lowercase and strip accents, so 'Márquez' == 'Marquez'.
+    Applied to BOTH sides of every comparison."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+
+
+def _letters(text: str) -> str:
+    """Only a-z, so "O'Leary", "O’Leary" and "OLeary" all become 'oleary'."""
+    return re.sub(r"[^a-z]", "", _fold(text))
+
+
+def _last_name(author: str) -> str:
+    parts = author.split()
+    return _letters(parts[-1]) if parts else ""
+
+
 def _author_matches(suggested: str, actual: list[str]) -> bool:
     if not suggested:
         return True  # no author given, nothing to contradict
-    last_name = re.sub(r"[^a-z]", "", suggested.lower().split()[-1])
-    return any(last_name in a.lower() for a in actual)
+    last_name = _last_name(suggested)
+    return bool(last_name) and any(last_name in _letters(a) for a in actual)
+
+
+def titles_match(wanted: str, found: str) -> bool:
+    """Exact match after normalizing, or one is the other plus extra words
+    (e.g. 'night circus' vs 'night circus deluxe edition')."""
+    a, b = normalize_title(wanted), normalize_title(found)
+    if not a or not b:
+        return False
+    return a == b or b.startswith(a + " ") or a.startswith(b + " ")
+
+
+def find_match(s: dict, search: Callable[[str, int], list[dict]]) -> tuple[dict | None, dict | None]:
+    """Look one suggestion up in Google Books. Tries a targeted query first,
+    then a plain one (the same kind the Search tab uses).
+    Returns (match, closest_result_seen)."""
+    title, author = s["title"], s["author"]
+    queries = [f"intitle:{title}" + (f" inauthor:{_last_name(author)}" if author else ""),
+               f"{title} {author}".strip()]
+    closest = None
+    for query in queries:
+        results = search(query, 10)  # one Google call per query
+        closest = closest or (results[0] if results else None)
+        by_author = [b for b in results if _author_matches(author, b["authors"])]
+        exact = [b for b in by_author if normalize_title(b["title"]) == normalize_title(title)]
+        close = [b for b in by_author if titles_match(title, b["title"])]
+        if exact or close:
+            return (exact or close)[0], closest  # prefer the exact title
+    return None, closest
 
 
 def verify(
@@ -141,15 +193,12 @@ def verify(
             filtered_out.append({**s, "why": "already ranked or duplicate"})
             continue
 
-        query = f'intitle:"{s["title"]}"' + (f' inauthor:"{s["author"]}"' if s["author"] else "")
-        results = search(query, 5)
-        match = next(
-            (b for b in results
-             if normalize_title(b["title"]) == wanted and _author_matches(s["author"], b["authors"])),
-            None,
-        )
+        match, closest = find_match(s, search)
         if match is None:
-            filtered_out.append({**s, "why": "not found in Google Books"})
+            why = "not found in Google Books"
+            if closest:  # show what Google did return, to make misses easy to judge
+                why += f' (closest result: "{closest["title"]}" by {", ".join(closest["authors"]) or "unknown"})'
+            filtered_out.append({**s, "why": why})
             continue
         if match["id"] in already_ranked_ids:
             filtered_out.append({**s, "why": "already ranked"})

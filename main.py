@@ -3,13 +3,16 @@
 Run:   uvicorn main:app --reload
 Test:  open http://127.0.0.1:8000/docs in your browser
 """
+from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field
 from supabase import Client
+from supabase_auth.errors import AuthError
 
 import books_api
 import ranking
@@ -17,6 +20,15 @@ import recommender
 from db import admin_client, public_client, user_client
 
 app = FastAPI(title="Book Reviews API")
+
+FRONTEND = Path(__file__).parent / "static" / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def frontend():
+    """The web app. Served by this same server, so the page and the API
+    share an origin and no CORS setup is needed."""
+    return FileResponse(FRONTEND)
 
 Sentiment = Literal["liked", "fine", "disliked"]
 
@@ -53,18 +65,17 @@ class ReviewIn(BaseModel):
 
 # ---------- Auth helpers ----------
 
-def _token_from(authorization: str | None) -> str | None:
-    """Pull the token out of an 'Authorization: Bearer <token>' header."""
-    if authorization and authorization.lower().startswith("bearer "):
-        return authorization.split(" ", 1)[1]
-    return None
+# Reads the 'Authorization: Bearer <token>' header. Declaring it this way
+# also adds the "Authorize" button to the /docs page, so you paste your
+# token once instead of on every request.
+bearer = HTTPBearer(auto_error=False, description="Paste the access_token from POST /auth/login")
 
 
-def require_user(authorization: str | None = Header(None)) -> tuple[Client, str]:
+def require_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> tuple[Client, str]:
     """For endpoints that need a login. Returns (client acting as user, user id)."""
-    token = _token_from(authorization)
-    if not token:
-        raise HTTPException(401, "Missing 'Authorization: Bearer <token>' header")
+    if creds is None:
+        raise HTTPException(401, "Not logged in: missing 'Authorization: Bearer <token>' header")
+    token = creds.credentials
     client = user_client(token)
     try:
         user = client.auth.get_user(token).user  # Supabase checks the token is valid
@@ -73,10 +84,9 @@ def require_user(authorization: str | None = Header(None)) -> tuple[Client, str]
     return client, user.id
 
 
-def optional_user(authorization: str | None = Header(None)) -> Client:
+def optional_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> Client:
     """For endpoints that work logged out but show more when logged in."""
-    token = _token_from(authorization)
-    return user_client(token) if token else public_client()
+    return user_client(creds.credentials) if creds else public_client()
 
 
 def db_error(e: APIError) -> HTTPException:
@@ -99,15 +109,52 @@ def user_id_for(client: Client, username: str) -> str:
 
 # ---------- Auth endpoints ----------
 
+def auth_error(e: AuthError) -> HTTPException:
+    """Turn a Supabase Auth error into a clear HTTP error instead of a 500."""
+    code = getattr(e, "code", None)
+    status = getattr(e, "status", None)
+    message = getattr(e, "message", str(e))
+
+    if code in ("user_already_exists", "email_exists"):
+        return HTTPException(409, "An account with that email already exists.")
+    if code == "email_not_confirmed":
+        return HTTPException(403, "Email not confirmed yet. Click the link in the confirmation email "
+                                  "(or turn off 'Confirm email' in Supabase for development).")
+    if code == "invalid_credentials":
+        return HTTPException(401, "Wrong email or password.")
+    if status == 429 or code == "over_email_send_rate_limit":
+        return HTTPException(429, f"Supabase rate limit: {message}")
+    if "database error saving new user" in message.lower():
+        # The handle_new_user trigger failed to create the profile row,
+        # most likely because the username is already taken.
+        return HTTPException(409, "Couldn't create your profile. That username may already be taken.")
+    if status in (400, 422):
+        return HTTPException(400, message)  # e.g. weak password, invalid email
+    return HTTPException(502, f"Supabase Auth error: {message}")
+
+
 @app.post("/auth/signup", status_code=201)
 def signup(body: SignUp):
+    # Friendly check first. The database's unique constraint is still the
+    # real guarantee if two people grab the same name at the same moment.
+    try:
+        taken = (public_client().table("profiles").select("id")
+                 .eq("username", body.username).execute().data)
+    except APIError as e:
+        raise db_error(e)
+    if taken:
+        raise HTTPException(409, f"The username '{body.username}' is already taken.")
+
     # The username goes into user metadata, where the handle_new_user
     # trigger picks it up and creates the profile row.
-    res = public_client().auth.sign_up({
-        "email": body.email,
-        "password": body.password,
-        "options": {"data": {"username": body.username}},
-    })
+    try:
+        res = public_client().auth.sign_up({
+            "email": body.email,
+            "password": body.password,
+            "options": {"data": {"username": body.username}},
+        })
+    except AuthError as e:
+        raise auth_error(e)
     return {"user_id": res.user.id if res.user else None}
 
 
@@ -117,8 +164,8 @@ def login(body: Credentials):
         res = public_client().auth.sign_in_with_password(
             {"email": body.email, "password": body.password}
         )
-    except Exception:
-        raise HTTPException(401, "Wrong email or password")
+    except AuthError as e:
+        raise auth_error(e)
     return {"access_token": res.session.access_token, "user_id": res.user.id}
 
 

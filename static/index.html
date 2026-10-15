@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>readily</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Fonts load without blocking the page; system fonts show until they arrive. -->
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+  /* ---------- Tokens ---------- */
+  :root {
+    --paper: #EDF0EA;      /* page */
+    --sheet: #F8F9F6;      /* raised surfaces */
+    --ink: #1C2620;        /* text */
+    --ink-soft: #55625A;   /* secondary text */
+    --rule: #CDD4CC;       /* borders */
+    --stamp: #2747C9;      /* actions */
+    --stamp-ink: #FFFFFF;
+    --liked: #2F7D4F;
+    --fine: #A97A1C;
+    --disliked: #8A3B5C;
+    --danger: #A3301F;
+    --serif: "Literata", Georgia, serif;
+    --sans: "Atkinson Hyperlegible", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141A16; --sheet: #1C241F; --ink: #E4EAE3; --ink-soft: #9BA89F;
+      --rule: #2F3A33; --stamp: #8FA5FF; --stamp-ink: #0E1430;
+      --liked: #6CC290; --fine: #E0B355; --disliked: #D987A9; --danger: #F08B7A;
+    }
+  }
+
+  /* ---------- Base ---------- */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 17px/1.5 var(--sans);
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 64px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.2; margin: 0; }
+  h2 { font-size: 1.6rem; margin-bottom: 4px; }
+  p { margin: 0; }
+  button, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--stamp); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  .btn {
+    border: 0; border-radius: 6px; padding: 9px 16px; cursor: pointer;
+    background: var(--stamp); color: var(--stamp-ink); font-weight: 700;
+  }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.quiet { background: transparent; color: var(--stamp); padding: 9px 10px; }
+  .btn.danger { background: transparent; color: var(--ink-soft); padding: 6px 8px; font-weight: 400; }
+  .btn.danger:hover, .btn.danger:focus-visible { color: var(--danger); }
+  input[type=text], input[type=email], input[type=password], textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--sheet);
+  }
+  label { display: block; font-weight: 700; margin: 14px 0 4px; }
+  .hint { color: var(--ink-soft); font-size: .92rem; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > input { flex: 1; }
+  .msg { margin: 12px 0; padding: 10px 12px; border-left: 4px solid var(--danger); background: var(--sheet); }
+  .msg.ok { border-color: var(--liked); }
+
+  /* ---------- Header + tabs ---------- */
+  header { display: flex; justify-content: space-between; align-items: baseline; padding: 28px 0 12px; }
+  header h1 { font-size: 1.9rem; letter-spacing: -.01em; }
+  header .who { color: var(--ink-soft); font-size: .92rem; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 24px; overflow-x: auto; }
+  nav button {
+    background: none; border: 0; padding: 10px 12px; cursor: pointer; white-space: nowrap;
+    color: var(--ink-soft); border-bottom: 3px solid transparent; margin-bottom: -1px;
+  }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--stamp); font-weight: 700; }
+
+  /* ---------- Book rows ---------- */
+  .books { list-style: none; margin: 16px 0 0; padding: 0; }
+  .book { display: grid; grid-template-columns: 52px 1fr auto; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .book.numbered { grid-template-columns: 2ch 52px 1fr auto; }
+  .rank { font-family: var(--serif); color: var(--ink-soft); text-align: right; }
+  .cover { width: 52px; height: 76px; object-fit: cover; border-radius: 3px; background: var(--rule); display: grid; place-items: center; font-family: var(--serif); font-size: 1.4rem; color: var(--ink-soft); }
+  .title { font-family: var(--serif); font-weight: 600; }
+  .meta { color: var(--ink-soft); font-size: .92rem; }
+  .reason { margin-top: 4px; font-size: .95rem; }
+  .side { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .score {
+    min-width: 3.1em; padding: 3px 8px; border-radius: 999px; text-align: center;
+    font-weight: 700; color: #fff; background: var(--ink-soft);
+  }
+  .score.overall { background: var(--stamp); color: var(--stamp-ink); }
+  .score.liked { background: var(--liked); } .score.fine { background: var(--fine); } .score.disliked { background: var(--disliked); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .score { color: #10150F; } }
+  .group-heading { margin-top: 28px; display: flex; align-items: center; gap: 10px; font-size: 1.15rem; }
+  .group-heading::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+  .empty { color: var(--ink-soft); padding: 24px 0; }
+  details { margin-top: 20px; color: var(--ink-soft); }
+  details li { margin: 4px 0; }
+
+  /* ---------- Ranking flow ---------- */
+  dialog {
+    width: min(680px, calc(100vw - 32px)); border: 0; border-radius: 10px; padding: 28px;
+    background: var(--sheet); color: var(--ink);
+  }
+  dialog::backdrop { background: rgb(10 16 12 / .55); }
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+  .groups button {
+    border: 2px solid var(--c); background: transparent; color: var(--ink); border-radius: 8px;
+    padding: 16px 8px; cursor: pointer; font-weight: 700;
+  }
+  .groups button:hover, .groups button:focus-visible { background: var(--c); color: var(--sheet); }
+
+  /* The memorable moment: the head-to-head */
+  .duel h2 { font-size: clamp(1.7rem, 4vw, 2.3rem); text-align: center; margin: 4px 0 6px; }
+  .duel .progress { text-align: center; color: var(--ink-soft); }
+  .duel-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; margin-top: 24px; }
+  .pick {
+    border: 2px solid var(--rule); background: var(--paper); border-radius: 10px; padding: 18px 12px;
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+    transition: border-color .15s, transform .15s;
+  }
+  .pick:hover, .pick:focus-visible { border-color: var(--stamp); transform: translateY(-2px); }
+  .pick .cover { width: 110px; height: 160px; font-size: 2.6rem; box-shadow: 0 6px 18px rgb(0 0 0 / .18); }
+  .pick .title { font-size: 1.05rem; }
+  .vs { font-family: var(--serif); font-style: italic; color: var(--ink-soft); align-self: center; }
+  .result { text-align: center; }
+  .result .big { font-family: var(--serif); font-size: 3.4rem; font-weight: 600; margin: 12px 0 4px; }
+  @media (max-width: 520px) {
+    .groups { grid-template-columns: 1fr; }
+    .duel-pair { grid-template-columns: 1fr 1fr; }
+    .vs { display: none; }
+    .pick .cover { width: 84px; height: 122px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>readily</h1>
+    <div class="who" id="who"></div>
+  </header>
+
+  <!-- ===== Login / sign up ===== -->
+  <section id="auth" hidden>
+    <h2 id="auth-title">Log in</h2>
+    <p class="hint">Rank the books you've read and see what everyone else loves.</p>
+    <form id="auth-form">
+      <div id="username-field" hidden>
+        <label for="username">Username</label>
+        <input id="username" type="text" minlength="3" maxlength="30" autocomplete="username">
+      </div>
+      <label for="email">Email</label>
+      <input id="email" type="email" required autocomplete="email">
+      <label for="password">Password</label>
+      <input id="password" type="password" required minlength="6" autocomplete="current-password">
+      <div class="row" style="margin-top:18px">
+        <button class="btn" id="auth-submit">Log in</button>
+        <button class="btn quiet" type="button" id="auth-toggle">Create an account instead</button>
+      </div>
+    </form>
+    <div id="auth-msg"></div>
+  </section>
+
+  <!-- ===== App ===== -->
+  <section id="app" hidden>
+    <nav role="tablist">
+      <button role="tab" data-tab="search" aria-selected="true">Search</button>
+      <button role="tab" data-tab="mine">My list</button>
+      <button role="tab" data-tab="foryou">For you</button>
+      <button role="tab" data-tab="top">Top books</button>
+      <button role="tab" data-tab="readers">Readers</button>
+    </nav>
+
+    <div data-panel="search">
+      <form class="row" id="search-form">
+        <input id="q" type="text" placeholder="Search by title or author" aria-label="Search books" required>
+        <button class="btn">Search</button>
+      </form>
+      <div id="search-msg"></div>
+      <ul class="books" id="search-results"></ul>
+    </div>
+
+    <div data-panel="mine" hidden>
+      <h2>My list</h2>
+      <p class="hint">Scores come from where each book sits in your list.</p>
+      <div id="mine-msg"></div>
+      <div id="mine-list"></div>
+    </div>
+
+    <div data-panel="foryou" hidden>
+      <h2>For you</h2>
+      <p class="hint">Suggestions based on your rankings. Every book is checked against Google Books before it's shown.</p>
+      <button class="btn" id="rec-btn" style="margin-top:14px">Get recommendations</button>
+      <div id="rec-msg"></div>
+      <ul class="books" id="rec-list"></ul>
+      <div id="rec-filtered"></div>
+    </div>
+
+    <div data-panel="top" hidden>
+      <h2>Top books</h2>
+      <p class="hint">Weighted so a book with a single perfect score can't beat one loved by many readers.</p>
+      <div id="top-msg"></div>
+      <ul class="books" id="top-list"></ul>
+    </div>
+
+    <div data-panel="readers" hidden>
+      <h2>Readers</h2>
+      <form class="row" id="reader-form" style="margin-top:14px">
+        <input id="reader-name" type="text" placeholder="Username" aria-label="Username" required>
+        <button class="btn">View list</button>
+      </form>
+      <div id="reader-msg"></div>
+      <div id="reader-head" class="row" style="margin-top:16px" hidden>
+        <h3 id="reader-title" style="flex:1"></h3>
+        <button class="btn" id="follow-btn">Follow</button>
+        <button class="btn quiet" id="unfollow-btn">Unfollow</button>
+      </div>
+      <div id="reader-list"></div>
+    </div>
+  </section>
+</div>
+
+<!-- ===== Ranking dialog ===== -->
+<dialog id="rank-dialog" aria-labelledby="rank-heading">
+  <div id="step-group">
+    <h2 id="rank-heading">How was <span id="rank-book-title"></span>?</h2>
+    <div class="groups">
+      <button data-group="liked" style="--c: var(--liked)">I liked it</button>
+      <button data-group="fine" style="--c: var(--fine)">It was fine</button>
+      <button data-group="disliked" style="--c: var(--disliked)">I didn't like it</button>
+    </div>
+    <label for="rank-note">Note (optional)</label>
+    <textarea id="rank-note" rows="2" placeholder="What stood out?"></textarea>
+    <label style="font-weight:400"><input type="checkbox" id="rank-private"> Only show this to people who follow me</label>
+  </div>
+
+  <div id="step-duel" class="duel" hidden>
+    <p class="progress" id="duel-progress"></p>
+    <h2>Which did you prefer?</h2>
+    <div class="duel-pair">
+      <button class="pick" id="pick-new"></button>
+      <span class="vs">or</span>
+      <button class="pick" id="pick-old"></button>
+    </div>
+  </div>
+
+  <div id="step-saving" hidden>
+    <p class="hint" style="text-align:center; padding:48px 0" role="status">Saving to your list…</p>
+  </div>
+
+  <div id="step-result" class="result" hidden>
+    <p class="hint" id="result-label"></p>
+    <p class="big" id="result-score"></p>
+    <p id="result-place"></p>
+  </div>
+
+  <div id="rank-msg"></div>
+  <div class="row" style="justify-content:flex-end; margin-top:20px">
+    <button class="btn quiet" id="rank-close">Cancel</button>
+  </div>
+</dialog>
+
+<script>
+/* =====================================================================
+   readily frontend. Plain JavaScript, no build step.
+   Talks to the FastAPI server on the same origin, so no CORS setup.
+   ===================================================================== */
+
+const GROUP_LABEL = { liked: "Liked it", fine: "It was fine", disliked: "Didn't like it" };
+const $ = (id) => document.getElementById(id);
+
+// ---------- Storage (wrapped: can throw in private windows) ----------
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let token = store.get("token");
+
+// ---------- API helper ----------
+async function api(path, { method = "GET", body } = {}) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && token) { logout("Your session expired. Log in again."); }
+  if (!res.ok) {
+    const detail = Array.isArray(data.detail) ? data.detail.map(d => d.msg).join("; ") : data.detail;
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+// ---------- Small rendering helpers (always textContent: never inject HTML) ----------
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else if (v !== undefined && v !== null) node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c != null) node.append(c instanceof Node ? c : String(c));
+  return node;
+}
+function cover(book) {
+  const src = book.cover_url ? book.cover_url.replace(/^http:/, "https:") : null;
+  if (src) return el("img", { class: "cover", src, alt: "" });
+  return el("div", { class: "cover", "aria-hidden": "true" }, (book.title || "?")[0]);
+}
+function showMsg(id, text, ok = false) {
+  const box = $(id);
+  box.replaceChildren(text ? el("div", { class: ok ? "msg ok" : "msg", role: "status" }, text) : "");
+}
+function authors(book) { return (book.authors || []).join(", ") || "Unknown author"; }
+function overall(book) {
+  if (!book.review_count) return "No ratings yet";
+  const n = book.review_count;
+  return `${Number(book.weighted_score).toFixed(1)} overall from ${n} ${n === 1 ? "rating" : "ratings"}`;
+}
+
+// ---------- Auth ----------
+let signingUp = false;
+$("auth-toggle").onclick = () => {
+  signingUp = !signingUp;
+  $("auth-title").textContent = signingUp ? "Create an account" : "Log in";
+  $("auth-submit").textContent = signingUp ? "Create account" : "Log in";
+  $("auth-toggle").textContent = signingUp ? "I already have an account" : "Create an account instead";
+  $("username-field").hidden = !signingUp;
+  $("username").required = signingUp;
+  showMsg("auth-msg", "");
+};
+$("auth-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = $("email").value.trim(), password = $("password").value;
+  try {
+    if (signingUp) {
+      await api("/auth/signup", { method: "POST", body: { email, password, username: $("username").value.trim() } });
+    }
+    const res = await api("/auth/login", { method: "POST", body: { email, password } });
+    token = res.access_token;
+    store.set("token", token); store.set("email", email);
+    showApp();
+  } catch (err) {
+    showMsg("auth-msg", err.message);
+  }
+};
+function logout(message) {
+  token = null; store.del("token"); store.del("email");
+  $("app").hidden = true; $("auth").hidden = false; $("who").replaceChildren();
+  if (message) showMsg("auth-msg", message);
+}
+function showApp() {
+  $("auth").hidden = true; $("app").hidden = false;
+  $("who").replaceChildren(store.get("email") || "", " ",
+    el("button", { class: "btn quiet", onclick: () => logout() }, "Log out"));
+  refreshMine();
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll("nav button").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll("nav button").forEach(t => t.setAttribute("aria-selected", t === tab));
+    document.querySelectorAll("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== tab.dataset.tab);
+    if (tab.dataset.tab === "mine") renderMine();
+    if (tab.dataset.tab === "top") loadTop();
+  };
+});
+
+// ---------- My list (also used to mark books as already ranked) ----------
+let myList = [];
+async function refreshMine() {
+  try { myList = await api("/me/rankings"); } catch (err) { showMsg("mine-msg", err.message); }
+}
+function renderList(container, rows, { onDelete } = {}) {
+  container.replaceChildren();
+  if (!rows.length) { container.append(el("p", { class: "empty" }, "No books ranked yet.")); return; }
+  for (const group of ["liked", "fine", "disliked"]) {
+    const inGroup = rows.filter(r => r.sentiment === group);
+    if (!inGroup.length) continue;
+    container.append(el("h3", { class: "group-heading", style: `--c: var(--${group})` }, GROUP_LABEL[group]));
+    const ul = el("ul", { class: "books" });
+    inGroup.forEach((r, i) => ul.append(el("li", { class: "book numbered" },
+      el("span", { class: "rank" }, i + 1),
+      cover(r),
+      el("div", {},
+        el("div", { class: "title" }, r.title),
+        el("div", { class: "meta" }, authors(r)),
+        r.is_public === false ? el("div", { class: "meta" }, "Followers only") : null,
+        r.body ? el("p", { class: "reason" }, r.body) : null),
+      el("div", { class: "side" },
+        el("span", { class: `score ${group}` }, Number(r.score).toFixed(1)),
+        onDelete ? el("button", { class: "btn danger", onclick: () => onDelete(r) }, "Remove") : null),
+    )));
+    container.append(ul);
+  }
+}
+async function renderMine() {
+  await refreshMine();
+  renderList($("mine-list"), myList, { onDelete: async (r) => {
+    try {
+      await api(`/reviews/${encodeURIComponent(r.book_id)}`, { method: "DELETE" });
+      showMsg("mine-msg", `Removed ${r.title}.`, true);
+      renderMine();
+    } catch (err) { showMsg("mine-msg", err.message); }
+  }});
+}
+
+// ---------- Search ----------
+let lastSearch = [];
+function bookRow(book, extra) {
+  const ranked = myList.some(r => r.book_id === book.id);
+  return el("li", { class: "book" },
+    cover(book),
+    el("div", {},
+      el("div", { class: "title" }, book.title),
+      el("div", { class: "meta" }, authors(book), book.published_year ? `, ${book.published_year}` : ""),
+      el("div", { class: "meta" }, overall(book)),
+      extra || null),
+    el("div", { class: "side" },
+      ranked ? el("span", { class: "meta" }, "In your list")
+             : el("button", { class: "btn", onclick: () => startRanking(book) }, "Rank")),
+  );
+}
+$("search-form").onsubmit = async (e) => {
+  e.preventDefault();
+  showMsg("search-msg", "");
+  $("search-results").replaceChildren(el("li", { class: "empty" }, "Searching…"));
+  try {
+    const books = await api(`/books/search?q=${encodeURIComponent($("q").value)}`);
+    lastSearch = books;
+    $("search-results").replaceChildren(...(books.length ? books.map(b => bookRow(b))
+      : [el("li", { class: "empty" }, "No books found. Try a different title or author.")]));
+  } catch (err) {
+    $("search-results").replaceChildren(); showMsg("search-msg", err.message);
+  }
+};
+
+// ---------- Ranking flow ----------
+// Mirrors ranking.find_insert_index() on the server: a binary search where
+// each step asks the user one question.
+async function findInsertIndex(ranked, prefersNewOver) {
+  let lo = 0, hi = ranked.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (await prefersNewOver(ranked[mid])) hi = mid; else lo = mid + 1;
+  }
+  return lo;
+}
+
+let ranking = null;  // { book, cancelled }
+function showStep(name) {
+  for (const s of ["group", "duel", "saving", "result"]) $(`step-${s}`).hidden = s !== name;
+}
+function startRanking(book) {
+  ranking = { book, cancelled: false };
+  $("rank-book-title").textContent = book.title;
+  $("rank-note").value = ""; $("rank-private").checked = false;
+  $("rank-close").textContent = "Cancel";
+  showMsg("rank-msg", ""); showStep("group");
+  $("rank-dialog").showModal();
+}
+$("rank-close").onclick = () => { if (ranking) ranking.cancelled = true; $("rank-dialog").close(); };
+$("rank-dialog").addEventListener("close", () => { if (ranking) ranking.cancelled = true; });
+
+document.querySelectorAll("[data-group]").forEach(btn => {
+  btn.onclick = () => rankInto(btn.dataset.group);
+});
+
+async function rankInto(group) {
+  const book = ranking.book;
+  try {
+    const list = await api(`/me/rankings?group=${group}`);
+    const maxQuestions = Math.ceil(Math.log2(list.length + 1));
+    let asked = 0;
+    showStep("saving");  // an empty group asks no questions and goes straight to saving
+
+    const index = await findInsertIndex(list, (existing) => new Promise((resolve, reject) => {
+      if (ranking.cancelled) return reject(new Error("cancelled"));
+      asked++;
+      showStep("duel");  // only shown when there's a real comparison to make
+      $("duel-progress").textContent = `Question ${asked} of about ${maxQuestions}`;
+      $("pick-new").replaceChildren(cover(book), el("span", { class: "title" }, book.title));
+      $("pick-old").replaceChildren(cover(existing), el("span", { class: "title" }, existing.title));
+      $("pick-new").onclick = () => { showStep("saving"); resolve(true); };
+      $("pick-old").onclick = () => { showStep("saving"); resolve(false); };
+      $("pick-new").focus();
+    }));
+
+    const created = await api("/reviews", { method: "POST", body: {
+      book_id: book.id,
+      sentiment: group,
+      above_book_id: index > 0 ? list[index - 1].book_id : null,
+      below_book_id: index < list.length ? list[index].book_id : null,
+      body: $("rank-note").value.trim() || null,
+      is_public: !$("rank-private").checked,
+    }});
+
+    $("result-label").textContent = GROUP_LABEL[group];
+    $("result-score").textContent = Number(created.score).toFixed(1);
+    $("result-score").style.color = `var(--${group})`;
+    $("result-place").textContent = `#${index + 1} of ${list.length + 1} in this group`;
+    $("rank-close").textContent = "Done";
+    showStep("result");
+    await refreshMine();
+    rerenderVisibleRows();  // swap "Rank" for "In your list" on this book
+  } catch (err) {
+    if (err.message !== "cancelled") { showStep("group"); showMsg("rank-msg", err.message); }
+  }
+}
+
+// ---------- Recommendations ----------
+let lastRecs = [];
+function rerenderVisibleRows() {
+  if (lastSearch.length) $("search-results").replaceChildren(...lastSearch.map(b => bookRow(b)));
+  if (lastRecs.length) renderRecs(lastRecs);
+}
+function renderRecs(recs) {
+  $("rec-list").replaceChildren(...recs.map(b =>
+    bookRow(b, b.reason ? el("p", { class: "reason" }, b.reason) : null)));
+}
+$("rec-btn").onclick = async () => {
+  $("rec-btn").disabled = true;
+  showMsg("rec-msg", "");
+  $("rec-list").replaceChildren(el("li", { class: "empty" }, "Asking the model, then checking each suggestion against Google Books…"));
+  $("rec-filtered").replaceChildren();
+  try {
+    const data = await api("/me/recommendations");
+    lastRecs = data.recommendations;
+    if (!lastRecs.length) {
+      $("rec-list").replaceChildren(el("li", { class: "empty" }, "No suggestions passed the checks this time. Try again."));
+    } else {
+      renderRecs(lastRecs);
+    }
+    if (data.filtered_out.length) {
+      $("rec-filtered").append(el("details", {},
+        el("summary", {}, `${data.filtered_out.length} suggestion${data.filtered_out.length === 1 ? "" : "s"} filtered out`),
+        el("ul", {}, data.filtered_out.map(f => el("li", {}, `${f.title}${f.author ? " by " + f.author : ""}: ${f.why}`)))));
+    }
+  } catch (err) {
+    $("rec-list").replaceChildren(); showMsg("rec-msg", err.message);
+  } finally {
+    $("rec-btn").disabled = false;
+  }
+};
+
+// ---------- Top books ----------
+async function loadTop() {
+  try {
+    const rows = await api("/rankings");
+    $("top-list").replaceChildren(...(rows.length ? rows.map((b, i) => el("li", { class: "book numbered" },
+      el("span", { class: "rank" }, i + 1),
+      cover(b),
+      el("div", {},
+        el("div", { class: "title" }, b.title),
+        el("div", { class: "meta" }, authors(b)),
+        el("div", { class: "meta" }, `Average ${Number(b.avg_score).toFixed(1)} from ${b.review_count} ${b.review_count === 1 ? "rating" : "ratings"}`)),
+      el("div", { class: "side" }, el("span", { class: "score overall" }, Number(b.weighted_score).toFixed(1))),
+    )) : [el("li", { class: "empty" }, "No public rankings yet.")]));
+  } catch (err) { showMsg("top-msg", err.message); }
+}
+
+// ---------- Readers ----------
+let currentReader = null;
+$("reader-form").onsubmit = (e) => {
+  e.preventDefault();
+  currentReader = $("reader-name").value.trim();
+  showMsg("reader-msg", "");
+  loadReader();
+};
+async function loadReader() {
+  try {
+    const rows = await api(`/users/${encodeURIComponent(currentReader)}/rankings`);
+    $("reader-title").textContent = `${currentReader}'s list`;
+    $("reader-head").hidden = false;
+    renderList($("reader-list"), rows);
+  } catch (err) {
+    $("reader-head").hidden = true; $("reader-list").replaceChildren();
+    showMsg("reader-msg", err.message);
+  }
+}
+async function setFollow(follow) {
+  try {
+    await api(`/users/${encodeURIComponent(currentReader)}/follow`, { method: follow ? "POST" : "DELETE" });
+    await loadReader();  // reload: following can reveal followers-only rankings
+    showMsg("reader-msg", follow ? `Following ${currentReader}. You can now see their followers-only rankings.`
+                                 : `Unfollowed ${currentReader}.`, true);
+  } catch (err) { showMsg("reader-msg", err.message); }
+}
+$("follow-btn").onclick = () => setFollow(true);
+$("unfollow-btn").onclick = () => setFollow(false);
+
+// ---------- Start ----------
+if (token) showApp(); else $("auth").hidden = false;
+</script>
+</body>
+</html>
